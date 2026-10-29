@@ -1,0 +1,120 @@
+import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const profile = mkdtempSync(join(tmpdir(), 'vitinho-destination-qa-'))
+const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', [
+  '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--remote-debugging-port=0',
+  '--remote-allow-origins=*', `--user-data-dir=${profile}`, 'about:blank',
+])
+
+try {
+  for (let i = 0; i < 100 && !existsSync(join(profile, 'DevToolsActivePort')); i++) await new Promise(resolve => setTimeout(resolve, 100))
+  const [port] = readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')
+  const { webSocketDebuggerUrl } = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json()
+  const ws = new WebSocket(webSocketDebuggerUrl)
+  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject })
+  let id = 0
+  const pending = new Map()
+  ws.onmessage = ({ data }) => {
+    const message = JSON.parse(data)
+    if (!message.id) return
+    pending.get(message.id)?.(message)
+    pending.delete(message.id)
+  }
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const next = ++id
+    pending.set(next, message => message.error ? reject(message.error) : resolve(message.result))
+    ws.send(JSON.stringify({ id: next, method, params }))
+  })
+  await send('Page.enable')
+  await send('Runtime.enable')
+
+  for (const [name, width, height, lang] of [['desktop', 1440, 1100, 'pt'], ['mobile', 390, 844, 'pt'], ['small-mobile', 320, 740, 'pt'], ['mobile-en', 390, 844, 'en']]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 })
+    await send('Page.navigate', { url: `http://127.0.0.1:4173/${lang}/` })
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    const { result } = await send('Runtime.evaluate', { expression: `document.getElementById('destinations').scrollIntoView({behavior:'instant'}); JSON.stringify({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, moreSpecies: [...document.querySelectorAll('.destination-more li')].map(li => li.textContent), cards: document.querySelectorAll('.destination-species-link').length})`, returnByValue: true })
+    await new Promise(resolve => setTimeout(resolve, 500))
+    console.log(name, result.value)
+    const activeDestination = await send('Runtime.evaluate', { expression: `document.querySelector('.site-header nav a[aria-current="location"]')?.getAttribute('href')`, returnByValue: true })
+    console.log('active destination', activeDestination.result.value)
+    await send('Runtime.evaluate', { expression: `window.scrollTo({top: document.querySelector('.destination-species-list').getBoundingClientRect().top + scrollY - 250, behavior:'instant'})` })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    const destinationCrops = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    const cropPath = join(tmpdir(), `vitinho-destination-crops-${name}.png`)
+    writeFileSync(cropPath, Buffer.from(destinationCrops.data, 'base64'))
+    console.log('destination crops screenshot', cropPath)
+    await send('Runtime.evaluate', { expression: `document.querySelector('.destination-species-flip').click()` })
+    await new Promise(resolve => setTimeout(resolve, 750))
+    const flipState = await send('Runtime.evaluate', { expression: `JSON.stringify({pressed: document.querySelector('.destination-species-flip').getAttribute('aria-pressed'), fact: document.querySelector('.destination-species-flip .destination-flip-fact').textContent, transform: getComputedStyle(document.querySelector('.destination-flip-inner')).transform})`, returnByValue: true })
+    console.log('flip', flipState.result.value)
+    if (JSON.parse(flipState.result.value).pressed !== 'true' || !JSON.parse(flipState.result.value).fact) throw new Error('Flip card did not reveal its fact')
+    const flipShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    writeFileSync(join(tmpdir(), `vitinho-flip-${name}.png`), Buffer.from(flipShot.data, 'base64'))
+    await send('Runtime.evaluate', { expression: `document.querySelector('.destination-species-flip').click()` })
+    const flipClosed = await send('Runtime.evaluate', { expression: `document.querySelector('.destination-species-flip').getAttribute('aria-pressed')`, returnByValue: true })
+    if (flipClosed.result.value !== 'false') throw new Error('Flip card did not return to its photo')
+    await send('Runtime.evaluate', { expression: `window.scrollTo({top: document.querySelectorAll('.destination-species-list')[1].getBoundingClientRect().top + scrollY - 250, behavior:'instant'})` })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    const bodoquenaCrops = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    const bodoquenaPath = join(tmpdir(), `vitinho-bodoquena-crops-${name}.png`)
+    writeFileSync(bodoquenaPath, Buffer.from(bodoquenaCrops.data, 'base64'))
+    console.log('bodoquena crops screenshot', bodoquenaPath)
+    await send('Runtime.evaluate', { expression: `document.querySelector('.destination-more').scrollIntoView({behavior:'instant'})` })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    const species = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    const speciesPath = join(tmpdir(), `vitinho-species-${name}.png`)
+    writeFileSync(speciesPath, Buffer.from(species.data, 'base64'))
+    console.log('species screenshot', speciesPath)
+    await send('Runtime.evaluate', { expression: `document.getElementById('wildlife').scrollIntoView({behavior:'instant'})` })
+    await new Promise(resolve => setTimeout(resolve, 600))
+    const gallery = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    const galleryPath = join(tmpdir(), `vitinho-gallery-${name}.png`)
+    writeFileSync(galleryPath, Buffer.from(gallery.data, 'base64'))
+    console.log('gallery screenshot', galleryPath)
+    const activeWildlife = await send('Runtime.evaluate', { expression: `document.querySelector('.site-header nav a[aria-current="location"]')?.getAttribute('href')`, returnByValue: true })
+    console.log('active wildlife', activeWildlife.result.value)
+    await send('Runtime.evaluate', { expression: `document.querySelector('.wildlife-4').scrollIntoView({behavior:'instant'})` })
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const aracariCrop = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    const aracariPath = join(tmpdir(), `vitinho-aracari-crop-${name}.png`)
+    writeFileSync(aracariPath, Buffer.from(aracariCrop.data, 'base64'))
+    console.log('aracari crop screenshot', aracariPath)
+    if (width < 600) {
+      await send('Runtime.evaluate', { expression: `document.querySelector('.menu-toggle').click()` })
+      await new Promise(resolve => setTimeout(resolve, 250))
+      const mobileMenu = await send('Runtime.evaluate', { expression: `JSON.stringify({open: document.querySelector('.menu-toggle').getAttribute('aria-expanded'), active: document.querySelector('.site-header nav a[aria-current="location"]')?.getAttribute('href'), activeBackground: getComputedStyle(document.querySelector('.site-header nav a[aria-current="location"]')).backgroundColor})`, returnByValue: true })
+      console.log('mobile menu', mobileMenu.result.value)
+      const menuImage = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+      const menuPath = join(tmpdir(), `vitinho-menu-${name}.png`)
+      writeFileSync(menuPath, Buffer.from(menuImage.data, 'base64'))
+      console.log('menu screenshot', menuPath)
+      await send('Runtime.evaluate', { expression: `document.querySelector('.menu-toggle').click()` })
+    }
+    await send('Runtime.evaluate', { expression: `document.querySelectorAll('.wildlife-open')[4].click()` })
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const opened = await send('Runtime.evaluate', { expression: `JSON.stringify({open: document.querySelector('.wildlife-lightbox').open, title: document.querySelector('.wildlife-lightbox-bottom h2')?.textContent, count: document.querySelector('.wildlife-lightbox-count')?.textContent, imageLoaded: document.querySelector('.wildlife-lightbox-stage img')?.naturalWidth > 0, overflow: document.body.style.overflow})`, returnByValue: true })
+    console.log('opened', opened.result.value)
+    const modal = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    const modalPath = join(tmpdir(), `vitinho-modal-${name}.png`)
+    writeFileSync(modalPath, Buffer.from(modal.data, 'base64'))
+    console.log('modal screenshot', modalPath)
+    await send('Runtime.evaluate', { expression: `document.querySelectorAll('.wildlife-lightbox-arrow')[1].click()` })
+    const next = await send('Runtime.evaluate', { expression: `document.querySelector('.wildlife-lightbox-bottom h2')?.textContent`, returnByValue: true })
+    console.log('next', next.result.value)
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 })
+    const previous = await send('Runtime.evaluate', { expression: `document.querySelector('.wildlife-lightbox-bottom h2')?.textContent`, returnByValue: true })
+    console.log('previous by keyboard', previous.result.value)
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const closed = await send('Runtime.evaluate', { expression: `JSON.stringify({open: document.querySelector('.wildlife-lightbox').open, focusRestored: document.activeElement === document.querySelectorAll('.wildlife-open')[4], overflow: document.body.style.overflow})`, returnByValue: true })
+    console.log('closed', closed.result.value)
+  }
+  ws.close()
+} finally {
+  chrome.kill()
+}
