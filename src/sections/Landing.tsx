@@ -5,6 +5,7 @@ import { Photo } from '../components/Photo'
 import { ExperienceTrail } from '../components/ExperienceTrail'
 import { DestinationMap } from '../components/DestinationMap'
 import { ContactForm } from '../components/ContactForm'
+import { ArrowIcon } from '../components/ArrowIcon'
 import type { Language } from '../i18n'
 import { tiltOffset } from '../heroMotion'
 import { media } from '../media'
@@ -56,7 +57,6 @@ export function Landing({ lang }: { lang: Language }) {
   const wildlifeTrigger = useRef<HTMLButtonElement>(null)
   const [activeWildlife, setActiveWildlife] = useState<number | null>(null)
   const [flippedSpecies, setFlippedSpecies] = useState<string | null>(null)
-  const [motionPermission, setMotionPermission] = useState<'prompt' | 'granted' | 'denied'>('denied')
   useEffect(() => {
     if (activeWildlife === null) return
     const dialog = lightbox.current
@@ -109,14 +109,9 @@ export function Landing({ lang }: { lang: Language }) {
     }
   }, [])
   useEffect(() => {
-    if (!window.isSecureContext || !window.DeviceOrientationEvent) return
-    const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & { requestPermission?: () => Promise<'granted' | 'denied'> }
-    setMotionPermission(orientation.requestPermission ? 'prompt' : 'granted')
-  }, [])
-  useEffect(() => {
-    if (motionPermission !== 'granted') return
     const photo = hero.current?.querySelector<HTMLImageElement>('.hero-photo img')
-    if (!photo) return
+    if (!photo || !window.isSecureContext || !window.DeviceOrientationEvent) return
+    const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & { requestPermission?: () => Promise<'granted' | 'denied'> }
     const mobile = window.matchMedia('(max-width: 800px)')
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let startingBeta: number | null = null
@@ -139,25 +134,33 @@ export function Landing({ lang }: { lang: Language }) {
       photo.style.setProperty('--hero-y', `${vertical}px`)
     }
     window.addEventListener('deviceorientation', onOrientation)
+    const requestPermission = () => { void orientation.requestPermission?.().catch(() => {}) }
+    let requestedOnGesture = false
+    const requestOnGesture = () => {
+      if (requestedOnGesture) return
+      requestedOnGesture = true
+      requestPermission()
+    }
+    if (orientation.requestPermission && mobile.matches && !reducedMotion.matches) {
+      requestPermission()
+      document.addEventListener('pointerup', requestOnGesture, { once: true })
+      document.addEventListener('touchend', requestOnGesture, { once: true })
+    }
     window.screen.orientation?.addEventListener('change', reset)
     document.addEventListener('visibilitychange', reset)
     mobile.addEventListener('change', reset)
     reducedMotion.addEventListener('change', reset)
     return () => {
       window.removeEventListener('deviceorientation', onOrientation)
+      document.removeEventListener('pointerup', requestOnGesture)
+      document.removeEventListener('touchend', requestOnGesture)
       window.screen.orientation?.removeEventListener('change', reset)
       document.removeEventListener('visibilitychange', reset)
       mobile.removeEventListener('change', reset)
       reducedMotion.removeEventListener('change', reset)
       reset()
     }
-  }, [motionPermission])
-  const enableMotion = async () => {
-    try {
-      const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & { requestPermission: () => Promise<'granted' | 'denied'> }
-      setMotionPermission(await orientation.requestPermission())
-    } catch { setMotionPermission('denied') }
-  }
+  }, [])
   const whatsapp = (operator = false) => `https://wa.me/5567998260643?text=${encodeURIComponent(t(operator ? 'contact.whatsappOperator' : 'contact.whatsappMessage'))}`
   return <>
     <Header lang={lang} />
@@ -169,13 +172,12 @@ export function Landing({ lang }: { lang: Language }) {
             <p className="eyebrow">{t('hero.eyebrow')}</p>
             <h1 id="hero-title">{t('hero.title')}</h1>
             <p className="hero-intro">{t('hero.intro')}</p>
-            <div className="hero-actions"><a className="button button-primary" href="#contact">{t('hero.contact')} <span aria-hidden="true">↗</span></a><a className="button button-outline-dark" href="#experiences">{t('hero.explore')}</a></div>
+            <div className="hero-actions"><a className="button button-primary" href="#contact">{t('hero.contact')} <ArrowIcon /></a><a className="button button-outline-dark" href="#experiences">{t('hero.explore')}</a></div>
           </div></div>
           <Photo image="hero" alt={t('hero.photo')} className="hero-photo" eager />
           <div className="hero-foreground" aria-hidden="true"><Photo image="hero" alt="" className="hero-photo-foreground" /></div>
         </div>
-        {motionPermission === 'prompt' && <button className="hero-motion-toggle" type="button" onClick={enableMotion}>{t('hero.motion')}</button>}
-        <a className="scroll-cue" href="#about">{t('hero.scroll')} <span aria-hidden="true">↓</span></a>
+        <a className="scroll-cue" href="#about">{t('hero.scroll')} <ArrowIcon direction="down" /></a>
       </section>
 
       <section id="about" className="section about-section">
@@ -197,22 +199,22 @@ export function Landing({ lang }: { lang: Language }) {
                 <p>{t(`destinations.${id}Text`)}</p>
                 <div className="destination-species">
                   <p className="destination-species-label">{t('destinations.speciesLabel')}</p>
-                  <p className="destination-flip-guide"><span aria-hidden="true">↻</span>{t('flipCard.guide')}</p>
+                  <p className="destination-flip-guide"><span aria-hidden="true"><ArrowIcon direction="rotate" /></span>{t('flipCard.guide')}</p>
                   <div className="destination-species-list">
                     {species.map((item) => <div className={`destination-species-link species-${item}`} key={item}>
                       <button className="destination-species-flip" type="button" aria-pressed={flippedSpecies === item} aria-label={t(flippedSpecies === item ? 'flipCard.close' : 'flipCard.open', { species: t(`highlights.${item}`), fact: t(`flipCard.facts.${item}`) })} onClick={() => setFlippedSpecies(current => current === item ? null : item)}>
                         <div className="destination-flip-inner">
-                          <div className="destination-flip-front"><Photo image={item} alt="" /><span className="destination-flip-cue" aria-hidden="true">↻ {t('flipCard.cue')}</span></div>
-                          <div className="destination-flip-back" aria-hidden={flippedSpecies !== item}><span className="destination-flip-eyebrow">{t('flipCard.curiosity')}</span><strong>{t(`highlights.${item}`)}</strong><span className="destination-flip-fact">{t(`flipCard.facts.${item}`)}</span><span className="destination-flip-return">↶ {t('flipCard.return')}</span></div>
+                          <div className="destination-flip-front"><Photo image={item} alt="" /><span className="destination-flip-cue" aria-hidden="true"><ArrowIcon direction="rotate" /> {t('flipCard.cue')}</span></div>
+                          <div className="destination-flip-back" aria-hidden={flippedSpecies !== item}><span className="destination-flip-eyebrow">{t('flipCard.curiosity')}</span><strong>{t(`highlights.${item}`)}</strong><span className="destination-flip-fact">{t(`flipCard.facts.${item}`)}</span><span className="destination-flip-return"><ArrowIcon direction="rotate-back" /> {t('flipCard.return')}</span></div>
                         </div>
                       </button>
-                      <a className="destination-species-name" href={speciesLinks[item]} target="_blank" rel="noopener noreferrer">{t(`highlights.${item}`)} <span aria-hidden="true">↗</span></a>
+                      <a className="destination-species-name" href={speciesLinks[item]} target="_blank" rel="noopener noreferrer">{t(`highlights.${item}`)} <ArrowIcon /></a>
                     </div>)}
                   </div>
                 </div>
                 <div className="destination-more">
                   <p className="destination-species-label">{t('destinations.moreLabel')}</p>
-                  <ul>{moreSpecies.map((item) => <li key={item}><a href={speciesLinks[item]} target="_blank" rel="noopener noreferrer">{t(`species.${item}`)} <span aria-hidden="true">↗</span></a></li>)}</ul>
+                  <ul>{moreSpecies.map((item) => <li key={item}><a href={speciesLinks[item]} target="_blank" rel="noopener noreferrer">{t(`species.${item}`)} <ArrowIcon /></a></li>)}</ul>
                 </div>
               </div>
             </article>)}
@@ -230,7 +232,7 @@ export function Landing({ lang }: { lang: Language }) {
       <section id="wildlife" className="section wildlife-section dark-section">
         <div className="container"><Heading eyebrow={t('highlights.eyebrow')} title={t('highlights.title')} intro={t('highlights.intro')} /><p className="wildlife-gallery-note">0{wildlife.length} / {t('highlights.galleryHint')}</p><div className="wildlife-grid">
           {wildlife.map((item, index) => <figure className={`wildlife-item wildlife-${index}`} id={`species-${item}`} key={item}>
-            <button className="wildlife-open" type="button" aria-label={t('highlights.open', { species: t(`highlights.${item}`) })} onClick={(event) => { wildlifeTrigger.current = event.currentTarget; setActiveWildlife(index) }}><Photo image={item} alt="" /><span aria-hidden="true" className="wildlife-zoom">↗</span></button>
+            <button className="wildlife-open" type="button" aria-label={t('highlights.open', { species: t(`highlights.${item}`) })} onClick={(event) => { wildlifeTrigger.current = event.currentTarget; setActiveWildlife(index) }}><Photo image={item} alt="" /><span aria-hidden="true" className="wildlife-zoom"><ArrowIcon /></span></button>
             <figcaption><span>0{index + 1} / 0{wildlife.length}</span>{t(`highlights.${item}`)}</figcaption>
             <div className="wildlife-places" aria-label={t('highlights.regions')}>{speciesRegions[item].map((region) => <a href={`#destination-${region}`} key={region}>{t(`destinations.${region}`)}</a>)}</div>
           </figure>)}
@@ -241,22 +243,22 @@ export function Landing({ lang }: { lang: Language }) {
         {activeWildlife !== null && <div className="wildlife-lightbox-panel">
           <div className="wildlife-lightbox-top"><span>{t('highlights.eyebrow')}</span><button type="button" className="wildlife-lightbox-close" aria-label={t('highlights.close')} onClick={() => lightbox.current?.close()}>×</button></div>
           <div className="wildlife-lightbox-stage">
-            <button type="button" className="wildlife-lightbox-arrow" aria-label={t('highlights.previous')} onClick={() => setActiveWildlife(index => index === null ? null : (index - 1 + wildlife.length) % wildlife.length)}>←</button>
+            <button type="button" className="wildlife-lightbox-arrow" aria-label={t('highlights.previous')} onClick={() => setActiveWildlife(index => index === null ? null : (index - 1 + wildlife.length) % wildlife.length)}><ArrowIcon direction="left" /></button>
             <img src={media[wildlife[activeWildlife]].src ?? undefined} srcSet={media[wildlife[activeWildlife]].srcSet} sizes="100vw" alt={t(`highlights.${wildlife[activeWildlife]}`)} />
-            <button type="button" className="wildlife-lightbox-arrow" aria-label={t('highlights.next')} onClick={() => setActiveWildlife(index => index === null ? null : (index + 1) % wildlife.length)}>→</button>
+            <button type="button" className="wildlife-lightbox-arrow" aria-label={t('highlights.next')} onClick={() => setActiveWildlife(index => index === null ? null : (index + 1) % wildlife.length)}><ArrowIcon direction="right" /></button>
           </div>
           <div className="wildlife-lightbox-bottom"><div><span className="wildlife-lightbox-count">0{activeWildlife + 1} / 0{wildlife.length}</span><h2>{t(`highlights.${wildlife[activeWildlife]}`)}</h2><p>{speciesRegions[wildlife[activeWildlife]].map(region => t(`destinations.${region}`)).join(' · ')}</p></div><div className="wildlife-lightbox-thumbs">{wildlife.map((item, index) => <button type="button" className={index === activeWildlife ? 'is-active' : ''} aria-label={t('highlights.open', { species: t(`highlights.${item}`) })} aria-current={index === activeWildlife ? 'true' : undefined} onClick={() => setActiveWildlife(index)} key={item}><img src={media[item].src ?? undefined} srcSet={media[item].srcSet} sizes="58px" alt="" /></button>)}</div></div>
         </div>}
       </dialog>
 
-      <section id="partners" className="section guiding-section"><div className="container guiding-grid"><div><Heading eyebrow={t('guiding.eyebrow')} title={t('guiding.title')} /><a className="button button-primary" href="#contact">{t('guiding.cta')} <span aria-hidden="true">↗</span></a></div><div className="guiding-copy"><p>{t('guiding.body')}</p><p className="operator-names">{t('guiding.names')}</p><a className="text-link" href={whatsapp(true)} target="_blank" rel="noopener noreferrer">WhatsApp ↗</a></div></div></section>
+      <section id="partners" className="section guiding-section"><div className="container guiding-grid"><div><Heading eyebrow={t('guiding.eyebrow')} title={t('guiding.title')} /><a className="button button-primary" href="#contact">{t('guiding.cta')} <ArrowIcon /></a></div><div className="guiding-copy"><p>{t('guiding.body')}</p><p className="operator-names">{t('guiding.names')}</p><a className="text-link" href={whatsapp(true)} target="_blank" rel="noopener noreferrer">WhatsApp <ArrowIcon /></a></div></div></section>
 
       <section id="gallery" className="section gallery-section"><div className="container"><Heading eyebrow={t('gallery.eyebrow')} title={t('gallery.title')} intro={t('gallery.intro')} /><div className="gallery-grid"><Photo image="galleryOne" alt={t('gallery.birders')} /><Photo image="galleryTwo" alt={t('gallery.boat')} /></div><p className="fine-print">{t('gallery.testimonials')}</p></div></section>
 
       <section id="team" className="section team-section dark-section"><div className="container"><Heading eyebrow={t('team.eyebrow')} title={t('team.title')} /><div className="team-grid"><article><Photo image="teamVitinho" alt={t('team.vitinhoPhoto')} /><div><h3>{t('team.vitinho')}</h3><p>{t('team.vitinhoRole')}</p></div></article><article><Photo image="daiani" alt={t('team.daianiPhoto')} /><div><h3>{t('team.daiani')}</h3><p>{t('team.daianiRole')}</p></div></article></div></div></section>
 
-      <section id="contact" className="section contact-section"><div className="container"><Heading eyebrow={t('contact.eyebrow')} title={t('contact.title')} intro={t('contact.intro')} /><div className="contact-grid"><div className="contact-panel"><h3>{t('contact.formTitle')}</h3><ContactForm lang={lang} /></div><div className="contact-panel contact-direct"><div><h3>{t('contact.whatsappTitle')}</h3><p>{t('contact.whatsappText')}</p><a className="button button-primary" href={whatsapp()} target="_blank" rel="noopener noreferrer">{t('contact.whatsappCta')} <span aria-hidden="true">↗</span></a></div><div className="direct-details"><p>{t('contact.email')}</p><a href="mailto:vitinhopantanal@gmail.com">vitinhopantanal@gmail.com</a><a href={whatsapp()} target="_blank" rel="noopener noreferrer">+55 67 99826-0643</a></div></div></div></div></section>
+      <section id="contact" className="section contact-section"><div className="container"><Heading eyebrow={t('contact.eyebrow')} title={t('contact.title')} intro={t('contact.intro')} /><div className="contact-grid"><div className="contact-panel"><h3>{t('contact.formTitle')}</h3><ContactForm lang={lang} /></div><div className="contact-panel contact-direct"><div><h3>{t('contact.whatsappTitle')}</h3><p>{t('contact.whatsappText')}</p><a className="button button-primary" href={whatsapp()} target="_blank" rel="noopener noreferrer">{t('contact.whatsappCta')} <ArrowIcon /></a></div><div className="direct-details"><p>{t('contact.email')}</p><a href="mailto:vitinhopantanal@gmail.com">vitinhopantanal@gmail.com</a><a href={whatsapp()} target="_blank" rel="noopener noreferrer">+55 67 99826-0643</a></div></div></div></div></section>
     </main>
-    <footer className="site-footer"><div className="container footer-inner"><div><strong>Vitinho Birdwatching Tours</strong><p>{t('footer.line')}</p></div><div><a href="#top">↑ {t('hero.scroll')}</a><p>© {new Date().getFullYear()} · {t('footer.rights')}</p></div></div></footer>
+    <footer className="site-footer"><div className="container footer-inner"><div><strong>Vitinho Birdwatching Tours</strong><p>{t('footer.line')}</p></div><div><a href="#top"><ArrowIcon direction="up" /> {t('hero.scroll')}</a><p>© {new Date().getFullYear()} · {t('footer.rights')}</p></div></div></footer>
   </>
 }

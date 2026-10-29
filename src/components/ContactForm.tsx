@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { contactSchema, type ContactInput } from '../contactSchema'
 import type { Language } from '../i18n'
+import { ArrowIcon } from './ArrowIcon'
 
 export function ContactForm({ lang }: { lang: Language }) {
   const { t } = useTranslation(undefined, { lng: lang })
@@ -44,7 +45,7 @@ export function ContactForm({ lang }: { lang: Language }) {
       <label className="consent"><input type="checkbox" {...register('consent')} aria-invalid={!!errors.consent} /><span>{t('contact.consent')}</span></label>
       {message('consent') && <small role="alert">{message('consent')}</small>}
       <p className="privacy-note">{t('contact.response')}</p>
-      <button className="button button-primary" disabled={isSubmitting} type="submit">{isSubmitting ? t('contact.sending') : t('contact.submit')} <span aria-hidden="true">↗</span></button>
+      <button className="button button-primary" disabled={isSubmitting} type="submit">{isSubmitting ? t('contact.sending') : t('contact.submit')} <ArrowIcon /></button>
       {status !== 'idle' && <p className={`form-status ${status}`} role="status">{t(`contact.${status}`)}</p>}
     </form>
   )
