@@ -40,22 +40,19 @@ export function DestinationMap({ region, title }: { region: Region; title: strin
     let resizeObserver: ResizeObserver | undefined
     const start = async () => {
       try {
+        const response = await fetch('/api/mapbox', { cache: 'no-store' })
+        if (!response.ok) throw new Error('Mapbox token unavailable')
+        const { token } = await response.json() as { token?: string }
+        if (!token?.startsWith('pk.')) throw new Error('Invalid Mapbox token')
         const mapboxgl = (await import('mapbox-gl')).default
         if (disposed || !canvas.current) return
         if (!mapboxgl.supported()) { setFailed(true); return }
         const config = regions[region]
         map = new mapboxgl.Map({
           container: canvas.current,
-          // Mapbox GL needs a public-token-shaped value to build resource URLs.
-          // The real token stays on the server; every Mapbox resource is proxied.
-          accessToken: 'pk.proxy',
+          accessToken: token,
           style: STYLE,
-          transformRequest: url => {
-            const resource = new URL(url, window.location.href)
-            if (resource.hostname !== 'api.mapbox.com' && !resource.hostname.endsWith('.tiles.mapbox.com')) return { url }
-            resource.searchParams.delete('access_token')
-            return { url: `/api/mapbox?path=${encodeURIComponent(resource.pathname + resource.search)}` }
-          },
+          localFontFamily: 'Nunito Sans, sans-serif',
           bounds: config.bounds,
           fitBoundsOptions: { padding: 40 },
           attributionControl: true,
