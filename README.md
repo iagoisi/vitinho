@@ -16,7 +16,7 @@ O build gera HTML pré-renderizado para `/en/` e `/pt/`. Configure `SITE_URL` co
 
 ## Mapas dos destinos
 
-Os mapas interativos usam o estilo do Bubble Maps. Configure `VITE_MAPBOX_TOKEN` com um token público do Mapbox no ambiente local e na Vercel. O contorno de cada região é ilustrativo e não representa limite oficial nem roteiro garantido. Sem o token ou suporte a WebGL, o site exibe uma imagem do mapa.
+Os mapas interativos usam o estilo do Bubble Maps. Configure `MAPBOX_TOKEN` com um token público de leitura do Mapbox no ambiente local e na Vercel. O token fica na função `/api/mapbox`, fora do JavaScript enviado ao navegador. A função aceita apenas os recursos usados por estes mapas. Para desenvolvimento local, `npm run dev` ativa o mesmo proxy; em produção, a Vercel executa `api/mapbox.ts`. O contorno de cada região é ilustrativo e não representa limite oficial nem roteiro garantido. Sem o token ou suporte a WebGL, o site exibe uma imagem do mapa.
 
 ## Fotografias
 

@@ -35,8 +35,6 @@ export function DestinationMap({ region, title }: { region: Region; title: strin
 
   useEffect(() => {
     if (!nearby || !canvas.current) return
-    const token = import.meta.env.VITE_MAPBOX_TOKEN
-    if (!token) { setFailed(true); return }
     let disposed = false
     let map: import('mapbox-gl').Map | undefined
     let resizeObserver: ResizeObserver | undefined
@@ -48,8 +46,16 @@ export function DestinationMap({ region, title }: { region: Region; title: strin
         const config = regions[region]
         map = new mapboxgl.Map({
           container: canvas.current,
-          accessToken: token,
+          // Mapbox GL needs a public-token-shaped value to build resource URLs.
+          // The real token stays on the server; every Mapbox resource is proxied.
+          accessToken: 'pk.proxy',
           style: STYLE,
+          transformRequest: url => {
+            const resource = new URL(url, window.location.href)
+            if (resource.hostname !== 'api.mapbox.com' && !resource.hostname.endsWith('.tiles.mapbox.com')) return { url }
+            resource.searchParams.delete('access_token')
+            return { url: `/api/mapbox?path=${encodeURIComponent(resource.pathname + resource.search)}` }
+          },
           bounds: config.bounds,
           fitBoundsOptions: { padding: 40 },
           attributionControl: true,
