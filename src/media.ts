@@ -1,6 +1,6 @@
 // Optimized copies of the client's originals live in public/media; add credits when confirmed.
 export const media: Record<string, { src: string | null; srcSet?: string; credit?: string }> = {
-  logoLight: { src: '/media/vitinho_logotipo_white.svg' },
+  logoLight: { src: '/media/vitinho_logotipo_white.png' },
   logoDark: { src: '/media/vitinho_logotipo_short.png' },
   hero: { src: '/media/hero-2400.jpg', srcSet: '/media/hero-800.jpg 800w, /media/hero-2400.jpg 2400w' },
   vitinho: { src: '/media/portrait-1800.jpg', srcSet: '/media/portrait-800.jpg 800w, /media/portrait-1800.jpg 1066w' },
